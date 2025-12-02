@@ -16,12 +16,27 @@
     <div class="card shadow-sm mb-4">
         <div class="card-body">
             <h5>👤 {{ $user->name }}</h5>
-            <p><strong>Email:</strong> {{ $user->email }}</p>
+
+            <p><strong>Телефон:</strong> {{ $user->phone }}</p>
             <p><strong>Баланс:</strong> <span class="text-success fw-bold">{{ $user->balance }} ₽</span></p>
-            <form method="post">
-                @csrf
-                <button type="submit" name="topup" class="btn btn-success">Пополнить баланс +500 ₽</button>
-            </form>
+
+            <div class="d-flex gap-2 mt-3">
+                <a href="{{ route('profile.edit') }}" class="btn btn-outline-secondary">
+                    ✏️ Редактировать профиль
+                </a>
+
+                <form method="post">
+                    @csrf
+                    <button type="submit" name="topup" class="btn btn-success">
+                        Пополнить баланс +500 ₽
+                    </button>
+                </form>
+
+                {{-- Видим кнопку только для админов --}}
+                @if(Auth::user()->role === 'admin')
+                    <a href="{{ route('admin.index') }}" class="btn btn-warning">Перейти в админ панель</a>
+                @endif
+            </div>
         </div>
     </div>
 
@@ -46,33 +61,33 @@
                 </thead>
                 <tbody>
                     @foreach($bookings as $b)
-                        <tr>
-                            <td>{{ $b->quest_title }}</td>
-                            <td>{{ $b->date }}</td>
-                            <td>{{ $b->time }}</td>
-                            <td>{{ $b->players_count }}</td>
-                            <td>
-                                @if($b->status === 'paid')
-                                    <span class="badge bg-success">Оплачено</span>
-                                @elseif($b->status === 'canceled')
-                                    <span class="badge bg-secondary">Отменено</span>
-                                @else
-                                    <span class="badge bg-warning text-dark">{{ $b->status }}</span>
-                                @endif
-                            </td>
-                            <td>{{ $b->total_price }} ₽</td>
-                            <td>
-                                @if($b->status === 'paid')
-                                    <form method="post" onsubmit="return confirm('Отменить бронь?');">
-                                        @csrf
-                                        <input type="hidden" name="cancel_id" value="{{ $b->id }}">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">Отменить</button>
-                                    </form>
-                                @else
-                                    <span class="text-muted">–</span>
-                                @endif
-                            </td>
-                        </tr>
+                    <tr>
+                        <td>{{ $b->quest->title ?? 'Квест удалён' }}</td>
+                        <td>{{ $b->date }}</td>
+                        <td>{{ $b->time }}</td>
+                        <td>{{ $b->players_count }}</td>
+                        <td>
+                            @if($b->status === 'paid')
+                                <span class="badge bg-success">Оплачено</span>
+                            @elseif($b->status === 'canceled')
+                                <span class="badge bg-secondary">Отменено</span>
+                            @else
+                                <span class="badge bg-warning text-dark">{{ $b->status }}</span>
+                            @endif
+                        </td>
+                        <td>{{ $b->total_price }} ₽</td>
+                        <td>
+                            @if($b->status === 'paid')
+                                <form method="post" onsubmit="return confirm('Отменить бронь?');">
+                                    @csrf
+                                    <input type="hidden" name="cancel_id" value="{{ $b->id }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Отменить</button>
+                                </form>
+                            @else
+                                <span class="text-muted">–</span>
+                            @endif
+                        </td>
+                    </tr>
                     @endforeach
                 </tbody>
             </table>

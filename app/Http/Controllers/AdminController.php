@@ -2,9 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Booking;
+use App\Models\User;
+use App\Models\Quest;
+use App\Models\WalletTransaction;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class AdminController extends Controller
 {
@@ -19,35 +23,51 @@ class AdminController extends Controller
         });
     }
 
-    // Список брони
-    public function index()
+    // ======================================================================
+    // СТРАНИЦА АДМИНКИ
+    // ======================================================================
+    public function index(Request $request)
     {
-        $bookings = DB::table('bookings')
-            ->join('users', 'bookings.user_id', '=', 'users.id')
-            ->join('quests', 'bookings.quest_id', '=', 'quests.id')
-            ->select('bookings.*', 'users.name as user_name', 'quests.title as quest_title')
-            ->orderBy('bookings.date', 'desc')
-            ->orderBy('bookings.time', 'asc')
-            ->get();
+        $search = $request->get('search');  // Получаем запрос от пользователя
 
-        $quests = DB::table('quests')->get();
-        $users  = DB::table('users')->get();
+        $bookings = Booking::with(['user', 'quest'])
+            ->orderByRaw('strftime("%Y-%m-%d %H:%M", date || " " || time) DESC'); // Сортировка по дате и времени
 
-        return view('admin.index', compact('bookings', 'quests', 'users'));
+        // Поиск по номеру телефона
+        if ($search) {
+            $bookings = $bookings->whereHas('user', function ($query) use ($search) {
+                $query->where('phone', 'like', '%'.$search.'%'); // Поиск по полю phone
+            });
+        }
+
+        $bookings = $bookings->get();
+
+        $quests = Quest::all();
+        $users  = User::all();
+
+        return view('admin.index', compact('bookings', 'quests', 'users', 'search'));
     }
 
-    // Отмена брони с возвратом средств
+    // ======================================================================
+    // ОТМЕНА БРОНИ (с возвратом денег)
+    // ======================================================================
     public function cancel($id)
     {
-        $booking = DB::table('bookings')->where('id', $id)->first();
+        $booking = Booking::find($id);
+
         if (!$booking) {
             return back()->with('error', 'Бронирование не найдено.');
         }
 
         DB::transaction(function () use ($booking) {
-            DB::table('bookings')->where('id', $booking->id)->update(['status' => 'canceled']);
-            DB::table('users')->where('id', $booking->user_id)->increment('balance', $booking->total_price);
-            DB::table('wallet_transactions')->insert([
+            // 1. Отмечаем как отменённое
+            $booking->update(['status' => 'canceled']);
+
+            // 2. Возвращаем деньги пользователю
+            $booking->user->increment('balance', $booking->total_price);
+
+            // 3. Сохраняем транзакцию
+            WalletTransaction::create([
                 'user_id'    => $booking->user_id,
                 'type'       => 'refund',
                 'amount'     => $booking->total_price,
@@ -58,43 +78,59 @@ class AdminController extends Controller
         return back()->with('success', 'Бронирование отменено и средства возвращены.');
     }
 
-    // Ручное добавление брони админом
+    // ======================================================================
+    // РУЧНОЕ ДОБАВЛЕНИЕ БРОНИ АДМИНОМ
+    // ======================================================================
     public function addBooking(Request $request)
     {
         $validated = $request->validate([
-            'user_id'       => 'required|exists:users,id',
-            'quest_id'      => 'required|exists:quests,id',
-            'date'          => 'required|date',
-            'time'          => 'required',
-            'players_count' => 'required|integer|min:1',
+            'user_phone'  => 'required|string',
+            'quest_id'    => 'required|exists:quests,id',
+            'date'        => 'required|date',
+            'time'        => 'required',
+            'players_count'=> 'required|integer|min:1',
         ]);
 
-        $quest = DB::table('quests')->where('id', $validated['quest_id'])->first();
-        if (!$quest) {
-            return back()->with('error', 'Квест не найден.')->withInput();
+        // Проверяем, есть ли пользователь с таким номером телефона
+        $user = User::where('phone', $validated['user_phone'])->first();
+
+        // Если пользователя нет, создаём нового пользователя
+        if (!$user) {
+            // Создаем нового пользователя с базовым паролем
+            $user = User::create([
+                'name'     => 'Пользователь ' . $validated['user_phone'], // Имя по умолчанию
+                'phone'    => $validated['user_phone'], // Номер телефона
+                'password' => bcrypt('password123'), // Базовый пароль
+            ]);
         }
 
-        $busy = DB::table('bookings')
-            ->where('quest_id', $validated['quest_id'])
-            ->where('date',     $validated['date'])
-            ->where('time',     $validated['time'])
-            ->where('status', '!=', 'canceled')
-            ->exists();
-
-        if ($busy) {
-            return back()->with('error', 'Этот слот уже занят.')->withInput();
-        }
-
-        DB::table('bookings')->insert([
-            'user_id'       => $validated['user_id'],
-            'quest_id'      => $validated['quest_id'],
-            'date'          => $validated['date'],
-            'time'          => $validated['time'],
-            'players_count' => $validated['players_count'],
-            'status'        => 'paid',
-            'total_price'   => (int)$quest->price * (int)$validated['players_count'],
+        // Создаем бронь с привязкой к найденному или новому пользователю
+        $booking = Booking::create([
+            'quest_id'    => $validated['quest_id'],
+            'date'        => $validated['date'],
+            'time'        => $validated['time'],
+            'players_count'=> $validated['players_count'],
+            'status'      => 'pending', // Статус можно поставить в ожидание
+            'total_price' => Quest::find($validated['quest_id'])->price * $validated['players_count'],
+            'phone'       => $validated['user_phone'], // Сохраняем номер телефона
+            'user_id'     => $user->id, // Привязываем к пользователю
         ]);
 
-        return back()->with('success', 'Бронирование успешно добавлено.');
+        return redirect()->back()->with('success', 'Бронь добавлена!');
+    }
+
+    // ======================================================================
+    // ПОИСК ПОЛЬЗОВАТЕЛЕЙ ПО НОМЕРУ ТЕЛЕФОНА (для автозаполнения)
+    // ======================================================================
+    public function searchUser(Request $request)
+    {
+        // Получаем запрос для поиска
+        $search = $request->get('q');
+
+        // Ищем пользователей по номеру телефона
+        $users = User::where('phone', 'like', "%$search%")->get();
+
+        // Возвращаем данные в формате JSON
+        return response()->json($users);
     }
 }

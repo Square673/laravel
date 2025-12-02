@@ -42,6 +42,14 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/admin/cancel/{id}', [AdminController::class, 'cancel'])->name('admin.cancel');
     Route::post('/admin/add', [AdminController::class, 'addBooking'])->name('admin.add');
 });
+use App\Http\Controllers\ProfileEditController;
+
+Route::middleware('auth')->group(function () {
+    Route::get('/profile/edit', [ProfileEditController::class, 'edit'])->name('profile.edit');
+    Route::post('/profile/edit', [ProfileEditController::class, 'update']);
+
+    Route::post('/profile/password', [ProfileEditController::class, 'updatePassword'])->name('profile.password');
+});
 
 Route::get('/me', function () {
     if (!auth()->check()) return 'guest';
@@ -50,5 +58,14 @@ Route::get('/me', function () {
         'email' => auth()->user()->email,
         'role'  => auth()->user()->role,
     ];
+});
+
+Route::get('/admin/user-search', [AdminController::class, 'searchUser']);
+
+Route::prefix('admin')->middleware('auth')->group(function() {
+    Route::get('/', [AdminController::class, 'index'])->name('admin.index');
+    Route::post('/add', [AdminController::class, 'addBooking'])->name('admin.add');
+    Route::post('/cancel/{id}', [AdminController::class, 'cancel'])->name('admin.cancel');
+    Route::get('/search/user', [AdminController::class, 'searchUserByPhone']);
 });
 

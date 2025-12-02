@@ -18,12 +18,8 @@
         <div class="row g-3 align-items-end">
             <div class="col-md-3">
                 <label class="form-label">Пользователь</label>
-                <select name="user_id" class="form-select" required>
-                    <option value="">Выберите...</option>
-                    @foreach($users as $user)
-                        <option value="{{ $user->id }}">{{ $user->name }} ({{ $user->email }})</option>
-                    @endforeach
-                </select>
+                <input type="text" id="user-search" name="user_phone" class="form-control" placeholder="Введите номер телефона для поиска" required>
+                <div id="user-results" class="mt-2"></div>
             </div>
 
             <div class="col-md-3">
@@ -69,6 +65,7 @@
                 <tr>
                     <th>ID</th>
                     <th>Пользователь</th>
+                    <th>Номер телефона</th>
                     <th>Квест</th>
                     <th>Дата</th>
                     <th>Время</th>
@@ -82,8 +79,9 @@
                 @foreach($bookings as $b)
                 <tr>
                     <td>{{ $b->id }}</td>
-                    <td>{{ $b->user_name }}</td>
-                    <td>{{ $b->quest_title }}</td>
+                    <td>{{ $b->user ? $b->user->name : 'Не зарегистрирован' }}</td>
+                    <td>{{ $b->user ? $b->user->phone : 'Не указан' }}</td>
+                    <td>{{ $b->quest ? $b->quest->title : 'Не указан' }}</td>
                     <td>{{ $b->date }}</td>
                     <td>{{ $b->time }}</td>
                     <td>{{ $b->players_count }}</td>
@@ -114,7 +112,7 @@
     </div>
 </div>
 
-{{-- ====== Стили таймлайна ====== --}}
+{{-- ====== Стили для таймлайна и подсказок ====== --}}
 <style>
 .timeline-wrap {
     display: flex; flex-wrap: wrap; gap: .5rem;
@@ -130,21 +128,51 @@
 .slot-taken  { background:#adb5bd; color:#444; cursor: not-allowed; }
 .slot-expired{ background:#6c757d; color:#ddd; cursor: not-allowed; }
 .slot-active { background:#0d6efd !important; color:#fff; }
+
+#user-search {
+    position: relative; /* Ожидаем позиционирования для контейнера подсказок */
+    width: 100%;
+}
+
+/* Стили для блока подсказок */
+#user-results {
+    border: 1px solid #ccc;
+    max-height: 200px;    /* Ограничим высоту подсказок */
+    overflow-y: auto;     /* Добавим прокрутку */
+    position: absolute;   /* Позиционируем относительно поля ввода */
+    background: white;
+    width: 100%;          /* Ширина блока равна ширине поля ввода */
+    z-index: 999;
+    margin-top: 4px;      /* Небольшой отступ от поля ввода */
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+#user-results .user-result {
+    padding: 8px;
+    cursor: pointer;
+}
+
+#user-results .user-result:hover {
+    background-color: #f1f1f1;
+}
+
 </style>
 
-{{-- ====== Логика подгрузки слотов и выбора времени ====== --}}
+{{-- ====== Логика подгрузки слотов и поиска по номеру телефона ====== --}}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const questSel = document.getElementById('questSelect');
     const dateInp  = document.getElementById('dateInput');
     const slotsBox = document.getElementById('slotsContainer');
     const timeHidden = document.getElementById('selectedTime');
+    const userSearch = document.getElementById('user-search');
+    const userResults = document.getElementById('user-results');
 
     // минимальная дата — сегодня
     const today = new Date().toISOString().split('T')[0];
     dateInp.min = today;
 
-    // загрузка слотов
+    // Загрузка слотов
     async function loadSlots() {
         timeHidden.value = '';
         const questId = questSel.value;
@@ -208,6 +236,33 @@ document.addEventListener('DOMContentLoaded', function () {
 
     questSel.addEventListener('change', loadSlots);
     dateInp.addEventListener('change', loadSlots);
+
+    // Поиск по номеру телефона
+    userSearch.addEventListener('input', async function() {
+        const query = userSearch.value;
+        if (query.length > 2) {
+            const res = await fetch(`/admin/user-search?q=${query}`);
+            const data = await res.json();
+
+            userResults.innerHTML = '';
+            if (data.length > 0) {
+                data.forEach(user => {
+                    const div = document.createElement('div');
+                    div.classList.add('user-result');
+                    div.textContent = `${user.name} - ${user.phone}`;
+                    div.addEventListener('click', function() {
+                        userSearch.value = user.phone;
+                        userResults.innerHTML = '';
+                    });
+                    userResults.appendChild(div);
+                });
+            } else {
+                userResults.innerHTML = '<div class="text-muted small">Пользователь не найден</div>';
+            }
+        } else {
+            userResults.innerHTML = '';
+        }
+    });
 });
 </script>
 @endsection

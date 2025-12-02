@@ -2,18 +2,22 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Support\Facades\DB;
+use App\Models\Quest;
 
 class QuestController extends Controller
 {
-    public function index() {
-        $quests = DB::table('quests')->get();
+    // Страница со списком всех квестов
+    public function index()
+    {
+        $quests = Quest::all();
         return view('quests.index', compact('quests'));
     }
 
-    public function show($id) {
-        $quest = DB::table('quests')->where('id', $id)->first();
-        if (!$quest) abort(404);
+    // Страница одного квеста
+    public function show($id)
+    {
+        $quest = Quest::findOrFail($id); // выбросит 404 если нет
         return view('quests.show', compact('quest'));
     }
 }
+    

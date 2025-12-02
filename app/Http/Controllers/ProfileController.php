@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Booking;
+use App\Models\User;
+use App\Models\WalletTransaction;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class ProfileController extends Controller
 {
@@ -12,62 +15,73 @@ class ProfileController extends Controller
     {
         $user = Auth::user();
 
-        // Получение бронирования пользователя
-        $bookings = DB::table('bookings')
-            ->join('quests', 'quests.id', '=', 'bookings.quest_id')
+        // ===============================
+        // БРОНИРОВАНИЯ ПОЛЬЗОВАТЕЛЯ
+        // ===============================
+        $bookings = Booking::with('quest')
             ->where('user_id', $user->id)
-            ->select(
-                'bookings.*',
-                'quests.title as quest_title',
-                'quests.duration'
-            )
-            ->orderByDesc('bookings.id')
+            ->orderByDesc('id')
             ->get();
 
-        // Обработка пополнения
+        // ===============================
+        // ПОПОЛНЕНИЕ БАЛАНСА
+        // ===============================
         if ($request->isMethod('post') && $request->has('topup')) {
-            DB::table('users')->where('id', $user->id)->increment('balance', 500);
 
-            DB::table('wallet_transactions')->insert([
-                'user_id' => $user->id,
-                'type' => 'topup',
-                'amount' => 500,
-                'created_at' => now()
-            ]);
+            DB::transaction(function () use ($user) {
+
+                $user->increment('balance', 500);
+
+                WalletTransaction::create([
+                    'user_id'    => $user->id,
+                    'type'       => 'topup',
+                    'amount'     => 500,
+                    'created_at' => now(),
+                ]);
+            });
 
             return redirect()->back()->with('success', 'Баланс пополнен на 500 ₽');
         }
 
-        // Обработка отмены брони
+        // ===============================
+        // ОТМЕНА БРОНИ
+        // ===============================
         if ($request->isMethod('post') && $request->has('cancel_id')) {
-    $bookingId = $request->input('cancel_id');
 
-    $booking = DB::table('bookings')
-        ->where('id', $bookingId)
-        ->where('user_id', $user->id)
-        ->where('status', 'paid')
-        ->first();
+            $bookingId = $request->input('cancel_id');
 
-    if (!$booking) {
-        return redirect()->back()->with('error', '❌ Это бронирование нельзя отменить.');
-    }
-    // Изменение в таблице статуса и возвра денег
-    DB::transaction(function () use ($booking, $user) {
-        DB::table('bookings')->where('id', $booking->id)->update(['status' => 'canceled']);
+            /** @var Booking|null $booking */
+            $booking = Booking::where('id', $bookingId)
+                ->where('user_id', $user->id)
+                ->where('status', 'paid')
+                ->first();
 
-        DB::table('users')->where('id', $user->id)->increment('balance', $booking->total_price);
+            if (!$booking) {
+                return back()->with('error', '❌ Это бронирование нельзя отменить.');
+            }
 
-        DB::table('wallet_transactions')->insert([
-            'user_id' => $user->id,
-            'type' => 'refund',
-            'amount' => $booking->total_price,
-            'created_at' => now(),
-        ]);
-    });
+            DB::transaction(function () use ($booking, $user) {
 
-    return redirect()->back()->with('success', "✅ Бронирование отменено. Возвращено {$booking->total_price} ₽.");
-}
+                // Меняем статус
+                $booking->update(['status' => 'canceled']);
 
+                // Возвращаем деньги
+                $user->increment('balance', $booking->total_price);
+
+                // Логируем транзакцию
+                WalletTransaction::create([
+                    'user_id'    => $user->id,
+                    'type'       => 'refund',
+                    'amount'     => $booking->total_price,
+                    'created_at' => now(),
+                ]);
+            });
+
+            return back()->with(
+                'success',
+                "✅ Бронирование отменено. Возвращено {$booking->total_price} ₽."
+            );
+        }
 
         return view('profile.index', compact('user', 'bookings'));
     }

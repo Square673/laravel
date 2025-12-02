@@ -9,15 +9,16 @@ return new class extends Migration {
     {
         Schema::create('bookings', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->foreignId('quest_id')->constrained()->onDelete('cascade');
-            $table->date('date');
-            $table->time('time');
+            $table->foreignId('user_id')->nullable()->constrained();
+            $table->foreignId('quest_id')->constrained();
+            $table->string('date');
+            $table->string('time');
             $table->integer('players_count');
-            $table->string('status')->default('paid');
-            $table->integer('total_price');
-            $table->timestamps();
+            $table->decimal('total_price', 8, 2);
+            $table->string('status');
+            $table->timestamps();  // добавление временных меток
         });
+
     }
 
     public function down(): void

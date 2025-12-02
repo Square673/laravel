@@ -2,35 +2,42 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Support\Facades\DB;
+use App\Models\Quest;
+use App\Models\Booking;
 
 class SlotController extends Controller
 {
     public function getSlots($questId, $date)
     {
-        $quest = DB::table('quests')->where('id', $questId)->first();
+        $quest = Quest::find($questId);
+
         if (!$quest) {
-            return response()->json(['slots' => [], 'taken' => []]);
+            return response()->json([
+                'slots' => [],
+                'taken' => []
+            ]);
         }
 
-        // Определение шага между слотами
+        // Длительность квеста
         $duration = (int) $quest->duration;
-        $interval = $duration < 75 ? 90 : 120; // шаг между слотами
-        $openTime = strtotime("$date 10:00");
+
+        // Интервал между стартами слотов
+        $interval = $duration < 75 ? 90 : 120;
+
+        $openTime  = strtotime("$date 10:00");
         $closeTime = strtotime("$date 23:59");
 
         $slots = [];
         $current = $openTime;
 
-        // Генерация списка слотов
+        // Генерация доступных слотов
         while ($current + ($duration * 60) <= $closeTime) {
             $slots[] = date('H:i', $current);
             $current += $interval * 60;
         }
 
-        // Определение занятых слотов
-        $bookings = DB::table('bookings')
-            ->where('quest_id', $quest->id)
+        // Занятые слоты
+        $taken = Booking::where('quest_id', $quest->id)
             ->where('date', $date)
             ->where('status', '!=', 'canceled')
             ->pluck('time')
@@ -38,7 +45,7 @@ class SlotController extends Controller
 
         return response()->json([
             'slots' => $slots,
-            'taken' => $bookings,
+            'taken' => $taken,
         ]);
     }
 }

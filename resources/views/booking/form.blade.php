@@ -93,7 +93,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const selectedTime = document.getElementById('selectedTime');
     const questId = {{ $quest->id }};
 
-    // Устанавливаем минимальную дату на сегодня
     const today = new Date().toISOString().split('T')[0];
     dateInput.min = today;
 
@@ -123,14 +122,10 @@ document.addEventListener('DOMContentLoaded', function() {
             btn.type = 'button';
             btn.classList.add('slot-btn');
 
-            // Разбиваем время "HH:MM" на минуты
             const [hours, minutes] = slot.split(':').map(Number);
             const slotTime = hours * 60 + minutes;
 
-            // Проверяем: слот занят?
             const isTaken = data.taken.includes(slot);
-
-            // Проверяем: слот уже прошёл (если выбран сегодняшний день)
             const isExpired = (date === todayDate && slotTime <= currentTime);
 
             if (isTaken) {
